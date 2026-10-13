@@ -30,6 +30,7 @@ class Settings:
 
 
 _DEFAULTS: dict[str, object] = {
+    "active_nav": "conversations",  # rail item highlighted in the collapsed state
     "documents": {},      # doc_id -> Document
     "messages": [],       # [{"role", "content", "sources": [Source]}]
     "summaries": {},      # (doc_id, mode) -> str

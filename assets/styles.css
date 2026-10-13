@@ -32,7 +32,7 @@
 }
 
 .block-container {
-  padding-top: 2.2rem;
+  padding-top: 3.4rem;   /* clear Streamlit's 60px header bar */
   padding-bottom: 3rem;
   max-width: 1180px;
 }
@@ -40,10 +40,34 @@
 footer { visibility: hidden; }
 #MainMenu { visibility: hidden; }
 
-/* Hide Streamlit's Deploy button / toolbar chrome for a product-like feel */
-[data-testid="stToolbar"] { display: none; }
+/* Streamlit paints its header bar with the theme's solid background colour,
+   which reads as a black band across the top of the gradient. Make it
+   transparent. It must stay in the layout (not display:none) because it hosts
+   [data-testid="stExpandSidebarButton"]. */
+[data-testid="stHeader"] {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+/* Hide Streamlit's deploy / main-menu chrome for a product-like feel.
+   IMPORTANT: do NOT hide [data-testid="stToolbar"] itself — it also contains
+   [data-testid="stExpandSidebarButton"], the only way to reopen a collapsed
+   sidebar. Target the individual chrome controls instead. */
 [data-testid="stDecoration"] { display: none; }
 [data-testid="stAppDeployButton"] { display: none; }
+[data-testid="stMainMenu"] { display: none; }
+
+/* Keep the collapsed-sidebar expand control clearly discoverable. */
+[data-testid="stExpandSidebarButton"] {
+  color: var(--dm-text);
+  border-radius: var(--dm-radius-sm);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+[data-testid="stExpandSidebarButton"]:hover {
+  color: #fff;
+  background: var(--dm-primary-soft);
+}
 
 h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
@@ -359,20 +383,61 @@ h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
 /* ---------- Widget polish --------------------------------------------- */
 
-.stTabs [data-baseweb="tab-list"] {
-  gap: 0.35rem;
-  border-bottom: 1px solid var(--dm-border);
+/* ---------- Tabs (segmented control) ---------------------------------- */
+/* This Streamlit version renders tabs with React Aria, NOT BaseWeb:
+   [data-testid="stTabs"] > [role="tablist"] > [data-testid="stTab"].
+   Style the segmented pill bar so it matches the cards and primary buttons. */
+[data-testid="stTabs"] [role="tablist"] {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: var(--dm-surface);
+  border: 1px solid var(--dm-border);
+  border-radius: 12px;
+  margin-bottom: 1.2rem;
 }
 
-.stTabs [data-baseweb="tab"] {
-  height: 2.5rem;
-  padding: 0 1rem;
-  font-weight: 600;
+[data-testid="stTabs"] [data-testid="stTab"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 34px;
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
   color: var(--dm-muted);
-  border-radius: var(--dm-radius-sm) var(--dm-radius-sm) 0 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.stTabs [aria-selected="true"] { color: #fff; background: var(--dm-primary-soft); }
+[data-testid="stTabs"] [data-testid="stTab"]:hover {
+  color: var(--dm-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-testid="stTabs"] [data-testid="stTab"][aria-selected="true"] {
+  color: #fff;
+  background: linear-gradient(135deg, var(--dm-primary), #5b47e0);
+  box-shadow: 0 6px 18px var(--dm-primary-glow);
+}
+
+[data-testid="stTabs"] [data-testid="stTab"]:focus-visible {
+  outline: 2px solid var(--dm-accent);
+  outline-offset: 2px;
+}
+
+/* Streamlit reserves space for a full-width tab strip; keep the panel tight. */
+[data-testid="stTabs"] [role="tabpanel"] {
+  padding-top: 0;
+}
 
 .stButton > button {
   border-radius: var(--dm-radius-sm);
