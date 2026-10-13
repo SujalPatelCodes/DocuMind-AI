@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Serif face used for the embedded PDF page. */
+.font-serif-pdf {
+  font-family: "Times New Roman", Times, Georgia, serif;
+}
+
+/* Hide scrollbars inside panels while keeping them scrollable. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Vertical margin text for the arXiv-style identifier. */
+.v-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+/* Real PDF text layer: transparent glyphs placed over the rendered canvas so
+   the text stays selectable and search matches can be highlighted. */
+.pdf-text {
+  pointer-events: auto;
+}
+.pdf-text span {
+  position: absolute;
+  display: block;
+  color: transparent;
+  white-space: pre;
+}
+.pdf-text span::selection {
+  background: rgba(167, 139, 250, 0.35);
+}
