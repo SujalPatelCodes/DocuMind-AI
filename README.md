@@ -72,6 +72,17 @@ swap the backend without touching the UI.
 
 ---
 
+## Browser dashboard (`dashboard/`)
+
+Alongside the Streamlit app, the repo contains a standalone **React + TypeScript**
+dashboard (`dashboard/`) that recreates the assistant in the browser: PDFs are
+rendered in-page with `pdf.js`, and the chat is answered by **llama3.2:3b** over
+local Ollama (retrieval-augmented, with page citations, and a built-in fallback
+engine if Ollama is offline). Run it with `npm install && npm run dev` inside
+`dashboard/`. See [dashboard/README.md](dashboard/README.md) for details.
+
+---
+
 ## Quickstart
 
 ### 1. Install Ollama and pull a model

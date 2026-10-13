@@ -21,7 +21,7 @@ How the rail drives the app
 * **Feedback items** (help / profile / logout): these navigate to a one-shot
   ``?uiview=`` query parameter; ``consume_nav()`` reads it once and discards
   it, and ``app.py`` shows a toast (logout also clears the conversation).
-```
+"""
 
 from __future__ import annotations
 

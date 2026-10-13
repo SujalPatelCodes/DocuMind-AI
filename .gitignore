@@ -25,3 +25,9 @@ Thumbs.db
 # Uploads
 uploads/
 data/
+
+# Node / dashboard (React app)
+node_modules/
+dist/
+*.local
+npm-debug.log*
