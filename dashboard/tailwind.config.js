@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Exact palette from the AskYourPDF reference spec.
+        // Exact palette from the dashboard design spec.
         page: "#FAFAFA",
         frame: "#F1F2F5",
         ink: "#050505",

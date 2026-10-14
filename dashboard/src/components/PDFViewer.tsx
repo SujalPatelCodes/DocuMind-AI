@@ -32,6 +32,7 @@ interface Props {
   loading: boolean;
   onLoadFile: (file: File) => void;
   onAddDocument: () => void;
+  onLoadSample: () => void;
   onToggleCollapsed: () => void;
 }
 
@@ -144,6 +145,9 @@ function PdfPageView({
  * Left document pane (~48% of the workspace). Renders the opened PDF for
  * real (pdf.js → canvas + selectable text layer), scrolls through every
  * page, and accepts drag & drop of a new PDF anywhere in the pane.
+ *
+ * The document controls strip (collapse, zoom, search, select, add, page
+ * count) sits at the **top** of the pane.
  */
 export default function PDFViewer({
   zoom,
@@ -161,6 +165,7 @@ export default function PDFViewer({
   loading,
   onLoadFile,
   onAddDocument,
+  onLoadSample,
   onToggleCollapsed,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -213,96 +218,8 @@ export default function PDFViewer({
       onDrop={handleDrop}
       className="relative flex w-[48%] min-w-0 flex-col bg-pdfbg"
     >
-      {/* Floating PDF action toolbar */}
-      <PDFActionToolbar onAction={onAction} />
-
-      {/* Inline search field (top-left, appears when search is toggled) */}
-      {searchOpen && (
-        <div className="absolute left-2 top-2 z-20 flex h-[24px] w-[136px] items-center gap-1 rounded-md border border-line bg-white px-1.5 shadow-sm">
-          <Search size={11} className="shrink-0 text-placeholder" />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search document…"
-            aria-label="Search document"
-            className="min-w-0 flex-1 bg-transparent text-[9px] text-maintext placeholder-placeholder focus:outline-none"
-          />
-          <button
-            type="button"
-            aria-label="Close search"
-            onClick={onToggleSearch}
-            className="grid h-4 w-4 shrink-0 place-items-center rounded text-placeholder hover:text-maintext"
-          >
-            <X size={10} />
-          </button>
-        </div>
-      )}
-
-      {/* Main area: loading → spinner; doc → real pages; none → drop zone */}
-      {loading ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-subtext">
-          <Loader2 size={18} className="animate-spin" />
-          <p className="text-[10px] text-placeholder">Reading PDF…</p>
-        </div>
-      ) : doc ? (
-        <div
-          ref={scrollRef}
-          className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 pt-[38px]"
-          style={{ cursor: selectMode ? "text" : "default" }}
-        >
-          {Array.from({ length: doc.numPages }, (_, i) => (
-            <PdfPageView
-              key={i}
-              doc={doc}
-              pageNumber={i + 1}
-              scale={pageScale}
-              query={query}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          ref={scrollRef}
-          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6"
-        >
-          <div className="grid h-12 w-12 place-items-center rounded-full border border-dashed border-[#C9CDD4] bg-white text-[#6B7280]">
-            <UploadCloud size={20} />
-          </div>
-          <div className="text-center">
-            <p className="text-[11.5px] font-medium text-maintext">
-              Drag & drop your PDF here
-            </p>
-            <p className="mt-1 text-[9.5px] leading-relaxed text-placeholder">
-              Drop a file anywhere in this pane, or browse — the assistant will
-              read every page so you can chat about it.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Browse for a PDF"
-            onClick={onAddDocument}
-            className="flex h-8 items-center gap-1.5 rounded-full bg-ink px-4 text-[10px] font-medium text-white transition-opacity hover:opacity-85"
-          >
-            <Plus size={12} /> Browse files
-          </button>
-        </div>
-      )}
-
-      {/* Drag-over overlay */}
-      {dragging && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent/10">
-          <div className="flex h-20 w-64 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-accent bg-white/90 shadow-md">
-            <UploadCloud size={18} className="text-[#B8860B]" />
-            <p className="text-[10.5px] font-medium text-maintext">
-              Drop to open the PDF
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom document controls */}
-      <div className="flex h-[34px] shrink-0 items-center justify-between border-t border-[#E9EAEC] bg-white px-2">
+      {/* Document controls strip — now at the TOP of the pane */}
+      <div className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#E9EAEC] bg-white px-2">
         <div className="flex items-center gap-0.5">
           <button
             type="button"
@@ -388,6 +305,102 @@ export default function PDFViewer({
           </p>
         </div>
       </div>
+
+      {/* Floating PDF action toolbar */}
+      <PDFActionToolbar onAction={onAction} />
+
+      {/* Inline search field (appears below the controls when toggled) */}
+      {searchOpen && (
+        <div className="absolute left-2 top-[40px] z-20 flex h-[24px] w-[136px] items-center gap-1 rounded-md border border-line bg-white px-1.5 shadow-sm">
+          <Search size={11} className="shrink-0 text-placeholder" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Search document…"
+            aria-label="Search document"
+            className="min-w-0 flex-1 bg-transparent text-[9px] text-maintext placeholder-placeholder focus:outline-none"
+          />
+          <button
+            type="button"
+            aria-label="Close search"
+            onClick={onToggleSearch}
+            className="grid h-4 w-4 shrink-0 place-items-center rounded text-placeholder hover:text-maintext"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
+
+      {/* Main area: loading → spinner; doc → real pages; none → drop zone */}
+      {loading ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-subtext">
+          <Loader2 size={18} className="animate-spin" />
+          <p className="text-[10px] text-placeholder">Reading PDF…</p>
+        </div>
+      ) : doc ? (
+        <div
+          ref={scrollRef}
+          className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 pt-[38px]"
+          style={{ cursor: selectMode ? "text" : "default" }}
+        >
+          {Array.from({ length: doc.numPages }, (_, i) => (
+            <PdfPageView
+              key={i}
+              doc={doc}
+              pageNumber={i + 1}
+              scale={pageScale}
+              query={query}
+            />
+          ))}
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6"
+        >
+          <div className="grid h-12 w-12 place-items-center rounded-full border border-dashed border-[#C9CDD4] bg-white text-[#6B7280]">
+            <UploadCloud size={20} />
+          </div>
+          <div className="text-center">
+            <p className="text-[11.5px] font-medium text-maintext">
+              Drag & drop your PDF here
+            </p>
+            <p className="mt-1 text-[9.5px] leading-relaxed text-placeholder">
+              Drop a file anywhere in this pane, or browse — the assistant will
+              read every page so you can chat about it.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Browse for a PDF"
+            onClick={onAddDocument}
+            className="flex h-8 items-center gap-1.5 rounded-full bg-ink px-4 text-[10px] font-medium text-white transition-opacity hover:opacity-85"
+          >
+            <Plus size={12} /> Browse files
+          </button>
+          <button
+            type="button"
+            aria-label="Use the sample report"
+            onClick={onLoadSample}
+            className="flex h-7 items-center rounded-full border border-line bg-white px-3 text-[9.5px] font-medium text-maintext transition-colors hover:bg-light"
+          >
+            Try the sample report
+          </button>
+        </div>
+      )}
+
+      {/* Drag-over overlay */}
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent/10">
+          <div className="flex h-20 w-64 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-accent bg-white/90 shadow-md">
+            <UploadCloud size={18} className="text-[#B8860B]" />
+            <p className="text-[10.5px] font-medium text-maintext">
+              Drop to open the PDF
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

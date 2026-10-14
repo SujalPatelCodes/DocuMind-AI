@@ -8,7 +8,8 @@ import type {
   PdfAction,
 } from "../types";
 import { CONVERSATIONS, INITIAL_MESSAGES } from "../data/mockData";
-import { buildSamplePdf, loadPdfDocument } from "../pdf";
+import { api, persist } from "../api";
+import { buildSamplePdf, loadPdfDocumentData } from "../pdf";
 import type { PdfDocument } from "../pdf";
 import { NO_DOCUMENT_REPLY, suggestedTopic } from "../qa";
 import {
@@ -25,18 +26,28 @@ import ChatPanel from "./ChatPanel";
 let nextId = 0;
 const uid = (prefix: string) => `${prefix}-${++nextId}-${Date.now()}`;
 
+/** One conversation's document slot: the parsed PDF, a loading marker, or an
+ *  error marker (so the viewer can fall back to its empty state). */
+type ConvDoc = PdfDocument | "loading" | "error";
+
+interface DocMeta {
+  name: string;
+  numPages: number;
+}
+
 /**
- * Owns every piece of dashboard state. The document is real: a PDF is loaded
- * with pdf.js (a sample report is generated at startup), every page's text is
- * extracted, and chat answers quote the document page by page.
+ * Owns every piece of dashboard state. Each conversation has its **own** PDF:
+ * a document opened in one conversation never leaks into another, a brand-new
+ * conversation starts with an empty viewer you can drop a file into, and the
+ * document (plus its metadata) is stored in SQLite so it survives a refresh.
  */
 export default function AppShell() {
-  const [conversations, setConversations] =
-    useState<Conversation[]>(CONVERSATIONS);
-  const [activeConvId, setActiveConvId] = useState<string>("c1");
-  const [messagesByConv, setMessagesByConv] = useState<Record<string, ChatMessage[]>>({
-    c1: INITIAL_MESSAGES,
-  });
+  // Conversations/messages/settings are hydrated from the local SQLite API on
+  // mount and mirrored back on every change, so a refresh restores the session.
+  const [ready, setReady] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string>("");
+  const [messagesByConv, setMessagesByConv] = useState<Record<string, ChatMessage[]>>({});
   const [model, setModel] = useState<ModelId>("llama3.2:3b");
   const [convQuery, setConvQuery] = useState("");
   const [convCollapsed, setConvCollapsed] = useState(false);
@@ -47,20 +58,37 @@ export default function AppShell() {
   const [pdfQuery, setPdfQuery] = useState("");
   const [selectMode, setSelectMode] = useState(false);
 
-  // The opened PDF (real): parsed document + extracted text.
-  const [doc, setDoc] = useState<PdfDocument | null>(null);
+  // Per-conversation documents: parsed docs cached in memory, metadata mirrored
+  // to SQLite so the association (and the file itself) survives a refresh.
+  const [docsByConv, setDocsByConv] = useState<Record<string, ConvDoc>>({});
+  const [docMeta, setDocMeta] = useState<Record<string, DocMeta>>({});
   const [docBusy, setDocBusy] = useState(false);
-  const [documentName, setDocumentName] = useState("Energy-Transition-Report-2024.pdf");
-  const [pages, setPages] = useState(6);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messages = messagesByConv[activeConvId] ?? [];
+
+  // The active conversation's document (null while it has none or is loading).
+  const activeEntry = docsByConv[activeConvId];
+  const doc = activeEntry && typeof activeEntry === "object" ? activeEntry : null;
+  const activeMeta = docMeta[activeConvId] ?? null;
+  const documentName = activeMeta?.name ?? "";
+  const pages = activeMeta?.numPages ?? 0;
+  const docLoading = docBusy || activeEntry === "loading";
+
+  // Refs give the lazy-load effect current values without becoming dependencies
+  // (which would make the effect cancel its own in-flight request).
+  const docsRef = useRef(docsByConv);
+  docsRef.current = docsByConv;
+  const docMetaRef = useRef(docMeta);
+  docMetaRef.current = docMeta;
+  const inFlightRef = useRef<Set<string>>(new Set());
 
   const appendMessage = useCallback((convId: string, message: ChatMessage) => {
     setMessagesByConv((prev) => ({
       ...prev,
       [convId]: [...(prev[convId] ?? []), message],
     }));
+    persist(api.addMessage(convId, message));
   }, []);
 
   /** Swap the text of one message (used to turn the “Thinking…” bubble into
@@ -72,23 +100,30 @@ export default function AppShell() {
         m.id === id ? { ...m, text } : m,
       ),
     }));
+    persist(api.patchMessage(convId, id, text));
   }, []);
 
   const timeNow = () =>
     new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-  /** Open a File as the active document (PDF via pdf.js, text extracted). */
+  /** Open a File as the **active conversation's** document and persist it. */
   const loadPdfFile = useCallback(
     async (file: File, announce: boolean) => {
+      const convId = activeConvId;
+      if (!convId) return;
       setDocBusy(true);
       try {
-        const loaded = await loadPdfDocument(file);
-        setDoc(loaded);
-        setDocumentName(loaded.name);
-        setPages(loaded.numPages);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const loaded = await loadPdfDocumentData(bytes, file.name);
+        setDocsByConv((prev) => ({ ...prev, [convId]: loaded }));
+        setDocMeta((prev) => ({
+          ...prev,
+          [convId]: { name: loaded.name, numPages: loaded.numPages },
+        }));
+        persist(api.saveDocument(convId, loaded.name, loaded.numPages, bytes));
         if (announce) {
           const topic = suggestedTopic(loaded);
-          appendMessage(activeConvId, {
+          appendMessage(convId, {
             id: uid("m"),
             role: "assistant",
             time: "Just now",
@@ -98,7 +133,7 @@ export default function AppShell() {
           });
         }
       } catch (error) {
-        appendMessage(activeConvId, {
+        appendMessage(convId, {
           id: uid("m"),
           role: "assistant",
           time: "Just now",
@@ -113,24 +148,73 @@ export default function AppShell() {
     [activeConvId, appendMessage],
   );
 
-  // Keep a ref so the startup effect (below) never re-runs on identity change.
-  const loadRef = useRef(loadPdfFile);
-  loadRef.current = loadPdfFile;
-
-  const sampleStarted = useRef(false);
+  // Hydrate from the local API (SQLite). Falls back to the in-memory sample if
+  // the API is unreachable, so the UI still works standalone.
   useEffect(() => {
-    if (sampleStarted.current) return;
-    sampleStarted.current = true;
-    buildSamplePdf()
-      .then((file) => loadRef.current(file, true))
-      .catch(() => {
-        /* leave the drop-zone empty if the sample can't be generated */
+    let cancelled = false;
+    api
+      .getState()
+      .then((state) => {
+        if (cancelled) return;
+        setConversations(state.conversations);
+        setMessagesByConv(state.messages);
+        setDocMeta(state.documents ?? {});
+        setModel(state.settings.model);
+        setActiveConvId(
+          state.settings.activeConvId ?? state.conversations[0]?.id ?? "",
+        );
+        setReady(true);
+      })
+      .catch((error) => {
+        console.warn("[documind] API unavailable, using in-memory sample:", error);
+        if (cancelled) return;
+        setConversations(CONVERSATIONS);
+        setMessagesByConv({ c1: INITIAL_MESSAGES });
+        setActiveConvId("c1");
+        setReady(true);
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Lazy-load the active conversation's saved PDF (bytes → parsed document).
+  useEffect(() => {
+    if (!ready || !activeConvId) return;
+    const convId = activeConvId;
+    if (!docMetaRef.current[convId]) return;
+    if (docsRef.current[convId] !== undefined) return;
+    if (inFlightRef.current.has(convId)) return;
+
+    inFlightRef.current.add(convId);
+    setDocsByConv((prev) => ({ ...prev, [convId]: "loading" }));
+    api
+      .getDocument(convId)
+      .then(async (saved) => {
+        if (!saved) {
+          setDocsByConv((prev) => ({ ...prev, [convId]: "error" }));
+          return;
+        }
+        const loaded = await loadPdfDocumentData(saved.bytes, saved.name);
+        setDocsByConv((prev) => ({ ...prev, [convId]: loaded }));
+      })
+      .catch((error) => {
+        console.warn("[documind] failed to load conversation PDF:", error);
+        setDocsByConv((prev) => ({ ...prev, [convId]: "error" }));
+      })
+      .finally(() => {
+        inFlightRef.current.delete(convId);
+      });
+  }, [ready, activeConvId]);
 
   const openFilePicker = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  /** Drop the bundled sample report into the active (empty) conversation. */
+  const handleLoadSample = useCallback(() => {
+    void buildSamplePdf().then((file) => loadPdfFile(file, true));
+  }, [loadPdfFile]);
 
   const handleNav = useCallback(
     (key: NavKey) => {
@@ -226,7 +310,75 @@ export default function AppShell() {
     setActiveConvId(id);
     setMessagesByConv((prev) => ({ ...prev, [id]: [] }));
     setConvQuery("");
+    persist(api.createConversation(fresh));
+    persist(api.saveSettings({ activeConvId: id }));
   }, []);
+
+  /** Switch the active conversation (its own document + messages) and remember it. */
+  const handleSelectConversation = useCallback((id: string) => {
+    setActiveConvId(id);
+    persist(api.saveSettings({ activeConvId: id }));
+  }, []);
+
+  /** Remember the chosen model across reloads. */
+  const handleModelChange = useCallback((next: ModelId) => {
+    setModel(next);
+    persist(api.saveSettings({ model: next }));
+  }, []);
+
+  /** Rename a conversation from its three-dot menu. */
+  const handleRenameConversation = useCallback((id: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: clean } : c)),
+    );
+    persist(api.renameConversation(id, clean));
+  }, []);
+
+  /** Delete a conversation (its messages and its PDF). If it was the active one,
+   *  fall back to the next conversation — or a fresh one when none remain. */
+  const handleDeleteConversation = useCallback(
+    (id: string) => {
+      persist(api.deleteConversation(id));
+      const remaining = conversations.filter((c) => c.id !== id);
+      setMessagesByConv((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setDocsByConv((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setDocMeta((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+
+      if (remaining.length > 0) {
+        setConversations(remaining);
+        if (activeConvId === id) {
+          setActiveConvId(remaining[0].id);
+          persist(api.saveSettings({ activeConvId: remaining[0].id }));
+        }
+      } else {
+        const fresh: Conversation = {
+          id: uid("c"),
+          title: "New Conversation",
+          group: "TODAY",
+        };
+        setConversations([fresh]);
+        setMessagesByConv((prev) => ({ ...prev, [fresh.id]: [] }));
+        setActiveConvId(fresh.id);
+        persist(api.createConversation(fresh));
+        persist(api.saveSettings({ activeConvId: fresh.id }));
+      }
+    },
+    [conversations, activeConvId],
+  );
 
   const filteredConversations = useMemo(() => {
     const q = convQuery.trim().toLowerCase();
@@ -254,14 +406,16 @@ export default function AppShell() {
         collapsed={convCollapsed}
         onToggleCollapsed={() => setConvCollapsed((c) => !c)}
         onQueryChange={setConvQuery}
-        onSelect={setActiveConvId}
+        onSelect={handleSelectConversation}
         onNew={handleNewConversation}
+        onRename={handleRenameConversation}
+        onDelete={handleDeleteConversation}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopHeader
           model={model}
-          onModelChange={setModel}
+          onModelChange={handleModelChange}
           onAddDocument={openFilePicker}
         />
 
@@ -311,9 +465,10 @@ export default function AppShell() {
               documentName={documentName}
               pages={pages}
               doc={doc}
-              loading={docBusy}
+              loading={docLoading}
               onLoadFile={(file) => void loadPdfFile(file, true)}
               onAddDocument={openFilePicker}
+              onLoadSample={handleLoadSample}
               onToggleCollapsed={() => setPdfCollapsed(true)}
             />
           )}

@@ -22,12 +22,18 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Uploads
-uploads/
-data/
+# Uploads (repo-root only — anchored so they don't hit dashboard/src/data/)
+/uploads/
+/data/
 
 # Node / dashboard (React app)
 node_modules/
 dist/
 *.local
 npm-debug.log*
+
+# Local SQLite database (dashboard persistence — user data, never commit)
+/dashboard/data/
+*.db
+*.db-wal
+*.db-shm

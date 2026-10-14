@@ -12,7 +12,7 @@ interface Props {
  */
 export default function PDFActionToolbar({ onAction }: Props) {
   return (
-    <div className="absolute left-1/2 top-2.5 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-line bg-white p-0.5 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+    <div className="absolute left-1/2 top-[42px] z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-line bg-white p-0.5 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
       {ACTIONS.map((action) => (
         <button
           key={action}

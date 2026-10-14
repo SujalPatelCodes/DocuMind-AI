@@ -91,9 +91,17 @@ async function getTextItems(
   return items;
 }
 
-export async function loadPdfDocument(file: File): Promise<PdfDocument> {
-  const data = new Uint8Array(await file.arrayBuffer());
-  const proxy = await pdfjs.getDocument({ data }).promise;
+/**
+ * Parse a PDF from raw bytes (used when restoring a conversation's saved
+ * document from the API). `name` is only used for display.
+ */
+export async function loadPdfDocumentData(
+  bytes: Uint8Array,
+  name: string,
+): Promise<PdfDocument> {
+  // Hand pdf.js its own copy — the worker may take ownership of the buffer, and
+  // callers still need the original bytes to persist the document.
+  const proxy = await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const numPages = proxy.numPages;
 
   const pageTexts: string[] = [];
@@ -120,7 +128,13 @@ export async function loadPdfDocument(file: File): Promise<PdfDocument> {
     textItems.push(items);
   }
 
-  return { name: file.name, numPages, pageWidthAtScale1, pageTexts, textItems, proxy };
+  return { name, numPages, pageWidthAtScale1, pageTexts, textItems, proxy };
+}
+
+/** Read a File and parse it into a fully-loaded document. */
+export async function loadPdfDocument(file: File): Promise<PdfDocument> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return loadPdfDocumentData(bytes, file.name);
 }
 
 /* ------------------------------------------------------------------ */
