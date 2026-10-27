@@ -1,7 +1,5 @@
-import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   ABSTRACT_TEXT,
   BODY1,
@@ -15,7 +13,21 @@ import {
   OUTLOOK_TEXT,
 } from "./data/mockData";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+/* `pdfjs-dist` and `pdf-lib` are heavy (≈1 MB together), and a conversation
+ * only needs them once a PDF is actually opened. Both are therefore loaded on
+ * demand, which keeps them out of the initial bundle. */
+type PdfjsModule = typeof import("pdfjs-dist");
+let pdfjsPromise: Promise<PdfjsModule> | null = null;
+
+async function getPdfjs(): Promise<PdfjsModule> {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import("pdfjs-dist").then((mod) => {
+      mod.GlobalWorkerOptions.workerSrc = workerUrl;
+      return mod;
+    });
+  }
+  return pdfjsPromise;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -99,6 +111,7 @@ export async function loadPdfDocumentData(
   bytes: Uint8Array,
   name: string,
 ): Promise<PdfDocument> {
+  const pdfjs = await getPdfjs();
   // Hand pdf.js its own copy — the worker may take ownership of the buffer, and
   // callers still need the original bytes to persist the document.
   const proxy = await pdfjs.getDocument({ data: bytes.slice() }).promise;
@@ -129,12 +142,6 @@ export async function loadPdfDocumentData(
   }
 
   return { name, numPages, pageWidthAtScale1, pageTexts, textItems, proxy };
-}
-
-/** Read a File and parse it into a fully-loaded document. */
-export async function loadPdfDocument(file: File): Promise<PdfDocument> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  return loadPdfDocumentData(bytes, file.name);
 }
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +187,7 @@ export function buildSpans(
 const SAMPLE_NAME = "Energy-Transition-Report-2024.pdf";
 
 export async function buildSamplePdf(): Promise<File> {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
   const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);

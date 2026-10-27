@@ -57,13 +57,17 @@ export default function ConversationSidebar({
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const cancelRef = useRef(false);
 
   // Escape closes the menu.
   useEffect(() => {
     if (!menu) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
+      if (e.key === "Escape") {
+        setMenu(null);
+        setConfirmingDelete(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -74,6 +78,7 @@ export default function ConversationSidebar({
     if (collapsed) {
       setMenu(null);
       setEditingId(null);
+      setConfirmingDelete(null);
     }
   }, [collapsed]);
 
@@ -85,6 +90,7 @@ export default function ConversationSidebar({
       8,
       Math.min(rect.right - width, window.innerWidth - width - 8),
     );
+    setConfirmingDelete(null);
     setMenu({ id, top: rect.bottom + 4, left });
   };
 
@@ -289,27 +295,60 @@ export default function ConversationSidebar({
             className="fixed z-50 w-[128px] overflow-hidden rounded-lg border border-line bg-white py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
             style={{ top: menu.top, left: menu.left }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => beginRename(menu.id)}
-              className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-maintext transition-colors hover:bg-light"
-            >
-              <Pencil size={12} className="text-subtext" />
-              Rename
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onDelete(menu.id);
-                setMenu(null);
-              }}
-              className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
-            >
-              <Trash2 size={12} />
-              Delete
-            </button>
+            {confirmingDelete === menu.id ? (
+              /* Second step: deleting a conversation also deletes its PDF, so
+                 it needs an explicit confirmation. */
+              <>
+                <p className="px-2.5 pb-1.5 text-[10px] leading-snug text-subtext">
+                  Delete this chat and its PDF?
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setConfirmingDelete(null);
+                    setMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-maintext transition-colors hover:bg-light"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onDelete(menu.id);
+                    setMenu(null);
+                    setConfirmingDelete(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => beginRename(menu.id)}
+                  className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-maintext transition-colors hover:bg-light"
+                >
+                  <Pencil size={12} className="text-subtext" />
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => setConfirmingDelete(menu.id)}
+                  className="flex w-full items-center gap-2 px-2.5 py-[6px] text-left text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </>
       )}

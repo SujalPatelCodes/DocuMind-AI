@@ -52,11 +52,11 @@ export default function ChatMessage({ message }: Props) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end gap-2">
-        <div className="max-w-[250px]">
-          <div className="rounded-[14px] bg-ink px-3 py-2 text-[10px] leading-snug text-white">
+        <div className="max-w-[80%]">
+          <div className="rounded-[14px] bg-ink px-3.5 py-2.5 text-[12px] leading-relaxed text-white">
             {message.text}
           </div>
-          <p className="mt-1 text-right text-[8px] text-placeholder">{message.time}</p>
+          <p className="mt-1 text-right text-[9px] text-placeholder">{message.time}</p>
         </div>
         <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#E5E7EB] text-subtext">
           <User size={12} />
@@ -76,12 +76,12 @@ export default function ChatMessage({ message }: Props) {
         </svg>
       </span>
 
-      <div className="max-w-[260px]">
-        <div className="rounded-[14px] bg-white px-3 py-2.5 text-[10.5px] leading-[1.45] text-[#1F2937] shadow-[0_1px_2px_rgba(0,0,0,0.07)] whitespace-pre-line">
+      <div className="max-w-[80%]">
+        <div className="rounded-[14px] bg-white px-3.5 py-3 text-[12px] leading-[1.7] text-[#1F2937] shadow-[0_1px_2px_rgba(0,0,0,0.07)] whitespace-pre-line">
           {message.text}
         </div>
         <div className="mt-1 flex items-center gap-1.5 text-placeholder">
-          <span className="text-[8px]">{message.time}</span>
+          <span className="text-[9px]">{message.time}</span>
           <ActionIcon
             label={copied ? "Copied" : "Copy message"}
             onClick={copy}

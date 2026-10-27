@@ -7,7 +7,6 @@ import type {
   NavKey,
   PdfAction,
 } from "../types";
-import { CONVERSATIONS, INITIAL_MESSAGES } from "../data/mockData";
 import { api, persist } from "../api";
 import { buildSamplePdf, loadPdfDocumentData } from "../pdf";
 import type { PdfDocument } from "../pdf";
@@ -19,7 +18,6 @@ import {
 import NavigationSidebar from "./NavigationSidebar";
 import ConversationSidebar from "./ConversationSidebar";
 import TopHeader from "./TopHeader";
-import DocumentToolbar from "./DocumentToolbar";
 import PDFViewer from "./PDFViewer";
 import ChatPanel from "./ChatPanel";
 
@@ -45,6 +43,7 @@ export default function AppShell() {
   // Conversations/messages/settings are hydrated from the local SQLite API on
   // mount and mirrored back on every change, so a refresh restores the session.
   const [ready, setReady] = useState(false);
+  const [apiError, setApiError] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>("");
   const [messagesByConv, setMessagesByConv] = useState<Record<string, ChatMessage[]>>({});
@@ -148,14 +147,41 @@ export default function AppShell() {
     [activeConvId, appendMessage],
   );
 
-  // Hydrate from the local API (SQLite). Falls back to the in-memory sample if
-  // the API is unreachable, so the UI still works standalone.
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getState()
-      .then((state) => {
-        if (cancelled) return;
+  /** Close the active conversation's document — the viewer returns to its
+   *  empty state and the PDF is dropped from SQLite. */
+  const handleRemoveDocument = useCallback(() => {
+    const convId = activeConvId;
+    if (!convId) return;
+    setDocsByConv((prev) => {
+      const next = { ...prev };
+      delete next[convId];
+      return next;
+    });
+    setDocMeta((prev) => {
+      const next = { ...prev };
+      delete next[convId];
+      return next;
+    });
+    persist(api.deleteDocument(convId));
+    appendMessage(convId, {
+      id: uid("m"),
+      role: "assistant",
+      time: timeNow(),
+      text:
+        "I closed the document for this conversation. Drop in another PDF and " +
+        "I’ll read it.",
+    });
+  }, [activeConvId, appendMessage]);
+
+  // Hydrate from the local API (SQLite). The API ships with Vite, so a failure
+  // is a transient startup race — retry briefly rather than inventing demo
+  // conversations that do not exist in the database (they would silently vanish
+  // on the next refresh). If it stays down we show an explicit banner.
+  const hydrate = useCallback(async () => {
+    setApiError(false);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const state = await api.getState();
         setConversations(state.conversations);
         setMessagesByConv(state.messages);
         setDocMeta(state.documents ?? {});
@@ -164,19 +190,22 @@ export default function AppShell() {
           state.settings.activeConvId ?? state.conversations[0]?.id ?? "",
         );
         setReady(true);
-      })
-      .catch((error) => {
-        console.warn("[documind] API unavailable, using in-memory sample:", error);
-        if (cancelled) return;
-        setConversations(CONVERSATIONS);
-        setMessagesByConv({ c1: INITIAL_MESSAGES });
-        setActiveConvId("c1");
-        setReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
+        return;
+      } catch (error) {
+        if (attempt === 5) {
+          console.warn("[documind] local storage unavailable:", error);
+          setApiError(true);
+          setReady(true);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   // Lazy-load the active conversation's saved PDF (bytes → parsed document).
   useEffect(() => {
@@ -387,7 +416,24 @@ export default function AppShell() {
   }, [conversations, convQuery]);
 
   return (
-    <div className="flex h-full w-full bg-white">
+    <div className="relative flex h-full w-full bg-white">
+      {/* Only shown when SQLite can't be reached — never fake data instead. */}
+      {apiError && (
+        <div className="absolute inset-x-0 top-0 z-[60] flex items-center justify-center gap-2 bg-[#FEF2F2] px-3 py-1.5 text-[11px] text-[#B91C1C] shadow-sm">
+          <span>Local storage is unreachable — changes can’t be saved.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setReady(false);
+              void hydrate();
+            }}
+            className="font-medium underline underline-offset-2"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Hidden file picker backing every “add document” affordance */}
       <input
         ref={fileInputRef}
@@ -418,8 +464,6 @@ export default function AppShell() {
           onModelChange={handleModelChange}
           onAddDocument={openFilePicker}
         />
-
-        <DocumentToolbar documentName={documentName} />
 
         <div className="flex min-h-0 flex-1">
           {pdfCollapsed ? (
@@ -469,6 +513,7 @@ export default function AppShell() {
               onLoadFile={(file) => void loadPdfFile(file, true)}
               onAddDocument={openFilePicker}
               onLoadSample={handleLoadSample}
+              onRemoveDocument={handleRemoveDocument}
               onToggleCollapsed={() => setPdfCollapsed(true)}
             />
           )}

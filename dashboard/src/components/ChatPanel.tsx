@@ -25,8 +25,8 @@ export default function ChatPanel({ messages, onSend }: Props) {
       <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-3 pt-6">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-            <p className="text-[11px] font-medium text-maintext">Start a new conversation</p>
-            <p className="max-w-[220px] text-[9.5px] leading-relaxed text-placeholder">
+            <p className="text-[12.5px] font-medium text-maintext">Start a new conversation</p>
+            <p className="max-w-[240px] text-[11px] leading-relaxed text-placeholder">
               Ask any question about your document — the assistant will answer
               with references to the source pages.
             </p>

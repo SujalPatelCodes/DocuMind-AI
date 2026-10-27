@@ -33,6 +33,7 @@ interface Props {
   onLoadFile: (file: File) => void;
   onAddDocument: () => void;
   onLoadSample: () => void;
+  onRemoveDocument: () => void;
   onToggleCollapsed: () => void;
 }
 
@@ -166,6 +167,7 @@ export default function PDFViewer({
   onLoadFile,
   onAddDocument,
   onLoadSample,
+  onRemoveDocument,
   onToggleCollapsed,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -287,6 +289,17 @@ export default function PDFViewer({
         </div>
 
         <div className="flex items-center gap-2">
+          {hasDoc && (
+            <button
+              type="button"
+              aria-label="Close document"
+              title="Close this document"
+              onClick={onRemoveDocument}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#4B5563] transition-colors hover:bg-light hover:text-maintext"
+            >
+              <X size={13} />
+            </button>
+          )}
           <button
             type="button"
             aria-label="Add document"

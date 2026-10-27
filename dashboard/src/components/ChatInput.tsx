@@ -43,7 +43,7 @@ export default function ChatInput({ onSend }: Props) {
           }}
           placeholder="Ask any question about your document"
           aria-label="Ask any question about your document"
-          className="h-8 min-w-0 flex-1 rounded-full border border-line bg-white px-3.5 text-[10.5px] text-maintext placeholder-placeholder focus:border-[#cfd2d8] focus:outline-none"
+          className="h-9 min-w-0 flex-1 rounded-full border border-line bg-white px-3.5 text-[12px] text-maintext placeholder-placeholder focus:border-[#cfd2d8] focus:outline-none"
         />
 
         <button
