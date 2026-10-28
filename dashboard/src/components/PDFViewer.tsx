@@ -357,6 +357,13 @@ export default function PDFViewer({
           className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 pt-[38px]"
           style={{ cursor: selectMode ? "text" : "default" }}
         >
+          {doc?.isScanned && (
+            <div className="mb-3 flex w-full justify-center px-2">
+              <div className="flex items-center gap-1.5 rounded-full border border-[#F5D16E] bg-[#FFF7DC] px-3 py-[5px] text-[9px] text-[#8A6200] shadow-[0_1px_1px_rgba(0,0,0,0.01)]">
+                <span>This looks like a scanned PDF — no selectable text was found. For best results, run OCR (e.g., ocrmypdf) first.</span>
+              </div>
+            </div>
+          )}
           {Array.from({ length: doc.numPages }, (_, i) => (
             <PdfPageView
               key={i}

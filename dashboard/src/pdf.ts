@@ -54,6 +54,8 @@ export interface PdfDocument {
   /** Raw text items per page (index 0 = page 1). */
   textItems: PdfTextItem[][];
   proxy: PDFDocumentProxy;
+  /** True if the PDF appears to be scanned (very little extractable text). */
+  isScanned: boolean;
 }
 
 /** A positioned text span for the selectable/highlightable overlay. */
@@ -104,6 +106,36 @@ async function getTextItems(
 }
 
 /**
+ * Heuristics to detect scanned/image-only PDFs.
+ * - Very few characters extracted overall
+ * - Or mostly whitespace / no real words
+ * - Or very few text items per page
+ */
+function detectScanned(
+  pageTexts: string[],
+  textItems: PdfTextItem[][],
+): boolean {
+  if (pageTexts.length === 0) return false;
+  let totalChars = 0;
+  let totalItems = 0;
+  let pagesWithText = 0;
+  for (let i = 0; i < pageTexts.length; i++) {
+    const cleaned = pageTexts[i].replace(/\s+/g, "");
+    totalChars += cleaned.length;
+    totalItems += textItems[i]?.length ?? 0;
+    if (cleaned.length > 10) pagesWithText++;
+  }
+  const avgCharsPerPage = totalChars / pageTexts.length;
+  const avgItemsPerPage = totalItems / pageTexts.length;
+  // Scanned PDFs often have < 50 chars of extractable text per page
+  // or very few text items (just maybe metadata)
+  if (avgCharsPerPage < 50 && avgItemsPerPage < 20) return true;
+  // If most pages have virtually no text
+  if (pagesWithText < pageTexts.length * 0.3 && avgCharsPerPage < 100) return true;
+  return false;
+}
+
+/**
  * Parse a PDF from raw bytes (used when restoring a conversation's saved
  * document from the API). `name` is only used for display.
  */
@@ -141,7 +173,8 @@ export async function loadPdfDocumentData(
     textItems.push(items);
   }
 
-  return { name, numPages, pageWidthAtScale1, pageTexts, textItems, proxy };
+  const isScanned = detectScanned(pageTexts, textItems);
+  return { name, numPages, pageWidthAtScale1, pageTexts, textItems, proxy, isScanned };
 }
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +191,26 @@ export function composeTransform(m1: number[], m2: number[]): number[] {
     m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
     m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
   ];
+}
+
+/** Render a PDF page to a base64 data URL image (for vision models). */
+export async function renderPageToImage(
+  proxy: PDFDocumentProxy,
+  pageNum: number,
+  scale = 1.5,
+): Promise<string> {
+  const page = await proxy.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not get canvas context");
+  canvas.height = viewport.height;
+  canvas.width = viewport.width;
+  await page.render({
+    canvasContext: context,
+    viewport,
+  }).promise;
+  return canvas.toDataURL("image/png");
 }
 
 /** Turn a page's raw text items into positioned CSS spans for the overlay. */

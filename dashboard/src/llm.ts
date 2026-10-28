@@ -3,6 +3,7 @@ import type { ModelId } from "./types";
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  images?: string[];
 }
 
 /**
@@ -41,15 +42,16 @@ export async function chatWithModel(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          messages,
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            ...(m.images && m.images.length ? { images: m.images } : {}),
+          })),
           stream: false,
-          // llama3.2:3b is a plain (non-reasoning) model; when a reasoning
-          // model is swapped in later, this keeps it from burning the token
-          // budget on hidden "thinking" steps before answering.
           think: false,
           options: {
-            temperature: 0.2,
-            num_predict: 1500,
+            temperature: 0.1,
+            num_predict: 2000,
           },
         }),
         signal: controller.signal,

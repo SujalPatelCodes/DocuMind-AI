@@ -111,7 +111,7 @@ function termTable(doc: DocLike) {
   for (const page of doc.pageTexts) {
     const seen = new Set<string>();
     for (const w of tokenize(page)) {
-      if (STOP.has(w) || w.length < 3) continue;
+      if (STOP.has(w) || w.length < 2) continue;
       total.set(w, (total.get(w) ?? 0) + 1);
       if (!seen.has(w)) {
         seen.add(w);
@@ -120,8 +120,10 @@ function termTable(doc: DocLike) {
     }
   }
   const N = Math.max(1, doc.numPages);
-  const idf = (w: string): number =>
-    Math.log(1 + (N - (df.get(w) ?? 0) + 0.5) / ((df.get(w) ?? 0) + 0.5));
+  const idf = (w: string): number => {
+    if (w.length < 2) return 2.0;
+    return Math.log(1 + (N - (df.get(w) ?? 0) + 0.5) / ((df.get(w) ?? 0) + 0.5));
+  };
   return { idf, total };
 }
 
@@ -143,22 +145,28 @@ function scorePage(
   if (words.length === 0) return -Infinity;
   const counts = new Map<string, number>();
   for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  const textLower = text.toLowerCase();
 
   let score = 0;
   let matched = 0;
   for (const w of tokens) {
-    if (STOP.has(w) || w.length < 3) continue;
+    if (STOP.has(w) && w.length > 3) continue;
+    if (w.length < 1) continue;
     const tf = counts.get(w) ?? 0;
     if (tf > 0) {
       matched++;
-      score += tf * idf(w);
-    } else {
-      score -= 0.15;
+      score += tf * (idf(w) || 1.0);
+    } else if (textLower.includes(w)) {
+      matched++;
+      score += 2.0;
     }
   }
-  const hasPhrase = phrase.length > 3 && text.toLowerCase().includes(phrase);
-  if (hasPhrase) score += 5;
-  if (matched === 0 && !hasPhrase) return -Infinity;
+  const hasPhrase = phrase.length > 1 && textLower.includes(phrase);
+  if (hasPhrase) score += 12;
+  if (matched === 0 && !hasPhrase) {
+    if (text.trim().length > 20) return 0.5;
+    return -0.1;
+  }
   return score;
 }
 
@@ -173,14 +181,20 @@ function scoreSentence(
   const words = new Set(tokenize(s));
   let sc = 0;
   for (const w of tokens) {
-    if (STOP.has(w) || w.length < 3) continue;
+    if (STOP.has(w)) continue;
+    if (w.length < 2) continue;
     if (words.has(w)) sc += idf(w) * 1.6;
   }
   const lower = s.toLowerCase();
-  const content = tokens.filter((w) => !STOP.has(w) && w.length >= 3);
-  if (phrase.length > 3 && lower.includes(phrase)) sc += 10;
+  const content = tokens.filter((w) => !STOP.has(w) && w.length >= 2);
+  if (phrase.length > 2 && lower.includes(phrase)) sc += 12;
   for (let i = 0; i + 1 < content.length; i++) {
-    if (lower.includes(`${content[i]} ${content[i + 1]}`)) sc += 4;
+    if (lower.includes(`${content[i]} ${content[i + 1]}`)) sc += 5;
+  }
+  if (sc === 0 && content.length > 0) {
+    for (const w of content) {
+      if (words.has(w)) { sc += 0.5; break; }
+    }
   }
   return sc;
 }
@@ -288,19 +302,26 @@ export function retrieveContext(question: string, doc: DocLike): Retrieval {
 
   const rankedPages = doc.pageTexts
     .map((t, i) => ({ i, t, s: scorePage(t, tokens, phrase, idf) }))
-    .filter((r) => Number.isFinite(r.s) && r.s > 0)
+    .filter((r) => Number.isFinite(r.s) && r.s > -0.01)
     .sort((a, b) => b.s - a.s);
 
   const quotes: ContextQuote[] = [];
-  for (const r of rankedPages.slice(0, 2)) {
-    for (const s of pickSentences(r.t, tokens, phrase, idf, 760)) {
+  for (const r of rankedPages.slice(0, 3)) {
+    for (const s of pickSentences(r.t, tokens, phrase, idf, 900)) {
       quotes.push({ page: r.i + 1, text: s });
     }
   }
   if (!quotes.length && rankedPages.length) {
     quotes.push({
       page: rankedPages[0].i + 1,
-      text: rankedPages[0].t.replace(/\s+/g, " ").slice(0, 460),
+      text: rankedPages[0].t.replace(/\s+/g, " ").slice(0, 600),
+    });
+  }
+  if (!quotes.length && doc.pageTexts.length) {
+    // Last resort: just return first chunk of text
+    quotes.push({
+      page: 1,
+      text: doc.pageTexts[0].replace(/\s+/g, " ").slice(0, 600),
     });
   }
 

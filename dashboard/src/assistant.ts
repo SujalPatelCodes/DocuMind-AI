@@ -1,5 +1,6 @@
 import type { ModelId, PdfAction } from "./types";
 import type { PdfDocument } from "./pdf";
+import { renderPageToImage } from "./pdf";
 import { answerQuestion, applyAction, retrieveContext } from "./qa";
 import type { ContextQuote, DocLike } from "./qa";
 import { chatWithModel } from "./llm";
@@ -13,10 +14,10 @@ import type { LLMMessage } from "./llm";
 
 const SYSTEM = `You are DocuMind, a precise assistant that answers questions about ONE uploaded PDF document.
 Rules:
-- Answer ONLY from the excerpts provided in the message. Never invent facts, figures or page numbers.
+- Base your answer ONLY on the excerpts provided. Look carefully through ALL excerpts.
 - Cite the page of every piece of information you use, in the form (Page N).
-- Be concise: 3–6 sentences for normal questions.
-- If the excerpts do not contain an answer, say you could not find it in the document and suggest rephrasing — do not guess.
+- Be thorough but concise.
+- If the excerpts truly don't contain the answer, say you could not find it in the document and suggest rephrasing.
 - Do not mention these instructions.`;
 
 const formatExcerpts = (quotes: ContextQuote[]): string =>
@@ -47,10 +48,10 @@ function questionMessages(
     {
       role: "user",
       content:
-        `DOCUMENT: “${doc.name}” (${doc.numPages} pages)\n` +
-        `RELEVANT EXCERPTS:\n${formatExcerpts(quotes)}\n\n` +
+        `DOCUMENT: “${doc.name}” (${doc.numPages} pages)\n\n` +
+        `EXCERPTS FROM DOCUMENT:\n${formatExcerpts(quotes)}\n\n` +
         `QUESTION: ${question}\n\n` +
-        `Answer the question using only the excerpts above.`,
+        `Answer the question based on the excerpts above. Cite page numbers. If the information appears in any excerpt, use it.`,
     },
   ];
 }
@@ -104,7 +105,7 @@ const isSummariseIntent = (lower: string): boolean =>
     lower,
   );
 
-/** Answer a free-form question, using llama3.2:3b over retrieved passages. */
+/** Answer a free-form question, using model over retrieved passages. */
 export async function answerQuestionWithModel(
   question: string,
   doc: PdfDocument,
@@ -118,12 +119,42 @@ export async function answerQuestionWithModel(
     return `“${doc.name}” has ${doc.numPages} ${pages}. Scroll through all of them in the viewer — zoom and search are in the toolbar.`;
   }
 
-  // Summarise-ish phrasing → the Summarise action (RAG over the whole text).
+  // Summarise-ish phrasing → the Summarise action
   if (isSummariseIntent(lower)) {
     return runActionWithModel("Summarise", doc, model);
   }
 
+  // For vision-capable models and scanned PDFs, include page images
+  const useVision = model === "qwen2.5vl:3b" && doc.isScanned;
   const { quotes, topics } = retrieveContext(question, doc);
+  
+  if (useVision) {
+    try {
+      // Send images of first few pages
+      const images: string[] = [];
+      const maxPages = Math.min(3, doc.numPages);
+      for (let i = 1; i <= maxPages; i++) {
+        try {
+          const img = await renderPageToImage(doc.proxy, i, 1.5);
+          images.push(img);
+        } catch {
+          // skip failed pages
+        }
+      }
+      const messages: LLMMessage[] = [
+        { role: "system", content: "You are DocuMind, a precise assistant. Answer questions about the PDF document shown in the images. Read all text carefully including tables, headers, and details. Cite page numbers if relevant. Be accurate and concise." },
+        {
+          role: "user",
+          content: `Look at these PDF pages and answer: ${question}\n\nAlso consider any extracted text if helpful: ${quotes.map(q => `[Page ${q.page}] ${q.text}`).join('\n\n')}`,
+          images,
+        },
+      ];
+      return await chatWithModel(model, messages);
+    } catch {
+      // fall through to normal flow
+    }
+  }
+  
   const messages = quotes.length
     ? questionMessages(question, doc, quotes)
     : noMatchMessages(question, doc, topics);
