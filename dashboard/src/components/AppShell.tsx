@@ -185,7 +185,11 @@ export default function AppShell() {
         setConversations(state.conversations);
         setMessagesByConv(state.messages);
         setDocMeta(state.documents ?? {});
-        setModel(state.settings.model);
+        model: (["llama3.2:3b", "qwen3.5:9b", "qwen2.5vl:3b"] as ModelId[]).includes(
+          state.settings.model as ModelId,
+        )
+          ? (state.settings.model as ModelId)
+          : "llama3.2:3b",
         setActiveConvId(
           state.settings.activeConvId ?? state.conversations[0]?.id ?? "",
         );

@@ -11,8 +11,8 @@ export interface ChatMessage {
   time: string;
 }
 
-/** The only model this project runs: llama.cpp / Ollama's llama3.2:3b. */
-export type ModelId = "llama3.2:3b";
+/** The models available in this project (Ollama). */
+export type ModelId = "llama3.2:3b" | "qwen3.5:9b" | "qwen2.5vl:3b";
 
 export type NavKey =
   | "docs"

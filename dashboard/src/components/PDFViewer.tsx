@@ -314,7 +314,7 @@ export default function PDFViewer({
             className="text-[9px] text-maintext"
             title={`${documentName} — ${pages} pages`}
           >
-            {hasDoc ? `Page 1 of ${pages}` : "No document"}
+            {hasDoc ? `Page 1 of ${pages}` : ""}
           </p>
         </div>
       </div>
